@@ -129,7 +129,7 @@ impl<'a> Delta<'a> {
     fn from_word_pair(
         left: Entry<'a>,
         right: Entry<'a>,
-    ) -> DeltasOrLengthDifference<impl Iterator<Item = Delta<'a>>> {
+    ) -> DeltasOrLengthDifference<impl Iterator<Item = (usize, Delta<'a>)>> {
         if left.syllables().count() != right.syllables().count() {
             return DeltasOrLengthDifference::LengthDifference;
         }
@@ -137,7 +137,10 @@ impl<'a> Delta<'a> {
         DeltasOrLengthDifference::Deltas(
             left.syllables()
                 .zip(right.syllables())
-                .flat_map(|(a, b)| Delta::from_syllable_pair(left.raw, right.raw, a, b)),
+                .enumerate()
+                .flat_map(|(i, (a, b))| {
+                    Delta::from_syllable_pair(left.raw, right.raw, a, b).map(move |d| (i, d))
+                }),
         )
     }
 
@@ -225,34 +228,58 @@ impl FromStr for DeltaKind {
 
 fn filter<'a>(options: &Options, words: impl ParallelIterator<Item = Entry<'a>>) -> Vec<Entry<'a>> {
     words
-        .filter(|w| {
-            w.syllables().any(|s| {
-                options.vowels.is_empty() || options.vowels.iter().any(|v| s.vowel.normal() == v)
-            })
-        })
-        .filter(|w| {
-            w.syllables().any(|s| {
-                options.initial_consonants.is_empty()
-                    || options
-                        .initial_consonants
-                        .iter()
-                        .any(|c| s.initial_consonant == Some(c.as_str()))
-            })
-        })
-        .filter(|w| {
-            w.syllables().any(|s| {
-                options.final_consonants.is_empty()
-                    || options
-                        .final_consonants
-                        .iter()
-                        .any(|c| s.final_consonant == Some(c.as_str()))
-            })
-        })
-        .filter(|w| {
-            w.syllables().any(|s| {
-                options.tones.is_empty()
-                    || options.tones.iter().copied().any(|t| s.vowel.tone() == t)
-            })
+        .filter_map(|w| {
+            let passing_vowel = w
+                .syllables()
+                .find_position(|s| options.vowels.iter().any(|v| s.vowel.normal() == v));
+            let passing_initial_consonant = w.syllables().find_position(|s| {
+                options
+                    .initial_consonants
+                    .iter()
+                    .any(|c| s.initial_consonant == Some(c.as_str()))
+            });
+
+            let passing_final_consonant = w.syllables().find_position(|s| {
+                options
+                    .final_consonants
+                    .iter()
+                    .any(|c| s.final_consonant == Some(c.as_str()))
+            });
+
+            let passing_tone = w
+                .syllables()
+                .find_position(|s| options.tones.iter().copied().any(|t| s.vowel.tone() == t));
+
+            if passing_tone.is_none() && !options.tones.is_empty() {
+                return None;
+            }
+
+            if passing_vowel.is_none() && !options.vowels.is_empty() {
+                return None;
+            }
+
+            if passing_initial_consonant.is_none() && !options.initial_consonants.is_empty() {
+                return None;
+            }
+
+            if passing_final_consonant.is_none() && !options.final_consonants.is_empty() {
+                return None;
+            }
+
+            if ![
+                passing_tone,
+                passing_vowel,
+                passing_initial_consonant,
+                passing_final_consonant,
+            ]
+            .into_iter()
+            .filter_map(std::convert::identity)
+            .all_equal()
+            {
+                return None;
+            }
+
+            Some(w)
         })
         .collect::<Vec<_>>()
 }
@@ -265,6 +292,14 @@ fn main() {
 
     let filtered_words = filter(&options, words());
 
+    let which_syllable_passed_predicate = |w: Entry<'_>| {
+        w.syllables()
+            .map(|s| Entry { raw: s.raw })
+            .find_position(|w| !filter(&options, rayon::iter::once(*w)).is_empty())
+            .expect("couldn't identify passing syllable index")
+            .0
+    };
+
     let pairs = filtered_words
         .into_iter()
         .permutations(2)
@@ -276,13 +311,22 @@ fn main() {
                 DeltasOrLengthDifference::Deltas(deltas) => deltas,
             };
 
-            let delta = deltas.next()?;
+            let (delta_syllable_index, delta) = deltas.next()?;
             if deltas.next().is_some() {
                 // pair is not minimal
                 return None;
             }
 
             if delta.kind != options.kind {
+                return None;
+            }
+
+            let (a_syllable_index, b_syllable_index) = (
+                which_syllable_passed_predicate(a),
+                which_syllable_passed_predicate(b),
+            );
+            if a_syllable_index != delta_syllable_index || b_syllable_index != delta_syllable_index
+            {
                 return None;
             }
 

@@ -1,0 +1,8 @@
+>   VNEDICT (Vietnamese-English Dictionary) by Paul Denisowski is
+	licensed under a Creative Commons Attribution 3.0 Unported License.
+	What this means is that anyone can use, transmit, or modify VNEDICT
+	for any purpose, including commercial purposes, as long as the source
+	is properly attributed (just include a note indicating where the
+	dictionary data came from and a link to this page).
+
+http://www.denisowski.org/Vietnamese/vnedict_readme.html
