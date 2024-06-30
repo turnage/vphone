@@ -30,7 +30,7 @@ If you want to generate a training pair list for distinguishing
 fast and slow rising tones for example, you could run this query:
 
 ```
-vphone -v a -v ă -t rising -f t -f ch --mode tone
+vphone -v a -v ă -t rising -f t -f ch --mode final_consonant
 ```
 
 and get results like:
