@@ -2,6 +2,8 @@
 
 Searches vn edict for minimal phonetic pairs. Outputs a csv on stdout.
 
+Run `cargo install` in this directory.
+
 For example, if you search for words with the vowels `a` or `e` that
 differ only in vowel:
 
