@@ -1,9 +1,11 @@
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use rayon::iter::ParallelIterator;
+use std::collections::HashSet;
+use std::fmt;
+use std::{collections::HashMap, str::FromStr};
 
-const NORMALIZED_VOWELS: [&'static str; 12] =
-    ["a", "ă", "â", "e", "ê", "i", "o", "ô", "ơ", "u", "ư", "y"];
+use super::words;
 
 lazy_static! {
     static ref VOWELS: HashMap<char, (Tone, char)> = [
@@ -45,26 +47,15 @@ lazy_static! {
         ('Y', (Tone::Flat, 'y')), ('Ý', (Tone::Rising, 'y')), ('Ỳ', (Tone::Falling, 'y')), ('Ỷ', (Tone::Question, 'y')), ('Ỹ', (Tone::Broken, 'y')), ('Ỵ', (Tone::LowBroken, 'y')),
     ].into_iter().collect();
 
-    static ref NORMALIZED_CLUSTERS: Vec<String> = NORMALIZED_VOWELS
-        .into_iter()
-        .combinations(3)
-        .map(|v| format!("{}{}{}", v[0], v[1], v[2]))
-        .chain(NORMALIZED_VOWELS.into_iter().combinations(2).map(|v| format!("{}{}", v[0], v[1])))
-        .chain(NORMALIZED_VOWELS.into_iter().map(String::from))
-        .collect();
+    static ref NORMALIZED_CLUSTERS: HashSet<String> = {
+        words().flat_map(|w| w.par_syllables()).map(|syllable| {
+            format!("{}", syllable.vowel)
+        }).collect()
+    };
 }
 
 fn normalize_vowel(c: char) -> char {
     VOWELS.get(&c).copied().expect("couldn't normalize vowel").1
-}
-
-pub fn normalize_cluster(raw: &str) -> &'static str {
-    let normalized = || raw.chars().map(normalize_vowel);
-
-    NORMALIZED_VOWELS
-        .iter()
-        .find(|v| itertools::equal(v.chars(), normalized()))
-        .expect("couldn't normalize vowel cluster")
 }
 
 pub fn is_vowel(c: char) -> bool {
@@ -94,18 +85,32 @@ impl Tone {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+impl FromStr for Tone {
+    type Err = String;
+
+    fn from_str(maybe_tone: &str) -> Result<Self, Self::Err> {
+        match maybe_tone {
+            "flat" => Ok(Tone::Flat),
+            "rising" => Ok(Tone::Rising),
+            "falling" => Ok(Tone::Falling),
+            "question" => Ok(Tone::Question),
+            "broken" => Ok(Tone::Broken),
+            "low_broken" => Ok(Tone::LowBroken),
+            _ => Err(String::from("Unrecognized tone; available tones: 'flat' (a), 'rising' (á), 'falling' (à), 'question' (ả), 'broken' (ã), 'low_broken' (ạ)"))
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Vowel<'a> {
-    pub raw: &'a str,
-    pub normal: &'static str,
-    pub tone: Tone,
+    raw: &'a str,
+    tone: Tone,
 }
 
 impl<'a> Vowel<'a> {
     pub fn new(raw: &'a str) -> Self {
         Self {
             raw,
-            normal: normalize_cluster(raw),
             tone: raw
                 .chars()
                 .map(|c| VOWELS.get(&c).expect("couldn't find vowel tone").0)
@@ -119,10 +124,24 @@ impl<'a> Vowel<'a> {
     }
 
     pub fn normal(self) -> &'static str {
-        self.normal
+        NORMALIZED_CLUSTERS
+            .get(&format!("{}", self))
+            .expect("couldn't get normalized cluster form")
     }
 
     pub fn tone(self) -> Tone {
         self.tone
+    }
+}
+
+impl<'a> fmt::Display for Vowel<'a> {
+    fn fmt(&self, w: &mut fmt::Formatter) -> fmt::Result {
+        self.raw
+            .chars()
+            .map(normalize_vowel)
+            .map(|v| write!(w, "{}", v))
+            .take_while(Result::is_ok)
+            .last()
+            .unwrap_or(Ok(()))
     }
 }

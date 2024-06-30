@@ -10,4 +10,6 @@ csv = "1.3.0"
 every_variant = "0.4.5"
 itertools = "0.13.0"
 lazy_static = "1.4.0"
+rayon = "1.10.0"
 serde = { version = "1.0.203", features = ["derive"] }
+structopt = "0.3.26"

@@ -1,20 +1,46 @@
+use std::{fmt, str::FromStr};
+
 use every_variant::EveryVariant;
 use itertools::Itertools;
 use lazy_static::lazy_static;
+use rayon::prelude::*;
+use structopt::StructOpt;
 
 mod vowels;
 
 use crate::vowels::*;
 
-const VN_EDICT_RAW: &str = include_str!("vnedict_lowercase.txt");
+pub const VN_EDICT_RAW: &str = include_str!("vnedict_lowercase.txt");
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, StructOpt)]
+#[structopt(
+    name = "vphone",
+    about = "Find minimal pairs and sets of vietnamese phonemes"
+)]
+struct Options {
+    #[structopt(short = "v")]
+    vowels: Vec<String>,
+
+    #[structopt(short = "i")]
+    initial_consonants: Vec<String>,
+
+    #[structopt(short = "f")]
+    final_consonants: Vec<String>,
+
+    #[structopt(short = "t")]
+    tones: Vec<Tone>,
+
+    #[structopt(short = "m", default_value = "tone", possible_values(&["initial_consonant", "tone", "vowel", "final_consonant"]))]
+    kind: DeltaKind,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 struct Entry<'a> {
     raw: &'a str,
 }
 
 impl<'a> Entry<'a> {
-    fn new(line: &'a str) -> Entry<'a> {
+    fn new(line: &'a str) -> Option<Entry<'a>> {
         let (word, _definition) = line
             .split_once(" : ")
             .unwrap_or_else(|| panic!("Couldn't separate line {:?}", line));
@@ -24,8 +50,15 @@ impl<'a> Entry<'a> {
             .filter_map(Syllable::new)
             .count();
 
-        assert_ne!(syllables, 0);
-        Entry { raw: word }
+        if syllables == 0 {
+            None
+        } else {
+            Some(Entry { raw: word })
+        }
+    }
+
+    fn par_syllables(self) -> impl ParallelIterator<Item = Syllable<'a>> {
+        self.raw.par_split_whitespace().filter_map(Syllable::new)
     }
 
     fn syllables(self) -> impl Iterator<Item = Syllable<'a>> {
@@ -33,7 +66,7 @@ impl<'a> Entry<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct Syllable<'a> {
     raw: &'a str,
     initial_consonant: Option<&'a str>,
@@ -70,8 +103,8 @@ impl<'a> Syllable<'a> {
     }
 }
 
-fn words() -> impl Iterator<Item = Entry<'static>> {
-    VN_EDICT_RAW.lines().skip(1).map(Entry::new)
+fn words() -> impl ParallelIterator<Item = Entry<'static>> {
+    VN_EDICT_RAW.par_lines().filter_map(Entry::new)
 }
 
 lazy_static! {
@@ -87,8 +120,33 @@ struct Delta<'a> {
     left: &'a str,
 }
 
+enum DeltasOrLengthDifference<T> {
+    Deltas(T),
+    LengthDifference,
+}
+
 impl<'a> Delta<'a> {
-    fn from_pair(left: Syllable<'a>, right: Syllable<'a>) -> impl Iterator<Item = Delta<'a>> {
+    fn from_word_pair(
+        left: Entry<'a>,
+        right: Entry<'a>,
+    ) -> DeltasOrLengthDifference<impl Iterator<Item = Delta<'a>>> {
+        if left.syllables().count() != right.syllables().count() {
+            return DeltasOrLengthDifference::LengthDifference;
+        }
+
+        DeltasOrLengthDifference::Deltas(
+            left.syllables()
+                .zip(right.syllables())
+                .flat_map(|(a, b)| Delta::from_syllable_pair(left.raw, right.raw, a, b)),
+        )
+    }
+
+    fn from_syllable_pair(
+        left_word: &'a str,
+        right_word: &'a str,
+        left: Syllable<'a>,
+        right: Syllable<'a>,
+    ) -> impl Iterator<Item = Delta<'a>> {
         let maybe_delta = move |kind| {
             let (isolated_left, isolated_right) = match kind {
                 DeltaKind::InitialConsonant => (
@@ -108,8 +166,8 @@ impl<'a> Delta<'a> {
                     kind,
                     isolated_left,
                     isolated_right,
-                    left: left.raw,
-                    right: right.raw,
+                    left: left_word,
+                    right: right_word,
                 })
             } else {
                 None
@@ -128,10 +186,113 @@ enum DeltaKind {
     FinalConsonant,
 }
 
+impl Default for DeltaKind {
+    fn default() -> Self {
+        DeltaKind::Tone
+    }
+}
+
+impl fmt::Display for DeltaKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match *self {
+                DeltaKind::InitialConsonant => "initial_consonant",
+                DeltaKind::Tone => "tone",
+                DeltaKind::Vowel => "vowel",
+                DeltaKind::FinalConsonant => "final_consonant",
+            }
+        )
+    }
+}
+
+impl FromStr for DeltaKind {
+    type Err = String;
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "initial_consonant" => Ok(DeltaKind::InitialConsonant),
+            "tone" => Ok(DeltaKind::Tone),
+            "vowel" => Ok(DeltaKind::Vowel),
+            "final_consonant" => Ok(DeltaKind::FinalConsonant),
+            _ => Err(format!(
+                "Invalid delta kind. Available kinds: {:#?}",
+                DELTA_KINDS.as_slice()
+            )),
+        }
+    }
+}
+
+fn filter<'a>(options: &Options, words: impl ParallelIterator<Item = Entry<'a>>) -> Vec<Entry<'a>> {
+    words
+        .filter(|w| {
+            w.syllables().any(|s| {
+                options.vowels.is_empty() || options.vowels.iter().any(|v| s.vowel.normal() == v)
+            })
+        })
+        .filter(|w| {
+            w.syllables().any(|s| {
+                options.initial_consonants.is_empty()
+                    || options
+                        .initial_consonants
+                        .iter()
+                        .any(|c| s.initial_consonant == Some(c.as_str()))
+            })
+        })
+        .filter(|w| {
+            w.syllables().any(|s| {
+                options.final_consonants.is_empty()
+                    || options
+                        .final_consonants
+                        .iter()
+                        .any(|c| s.final_consonant == Some(c.as_str()))
+            })
+        })
+        .filter(|w| {
+            w.syllables().any(|s| {
+                options.tones.is_empty()
+                    || options.tones.iter().copied().any(|t| s.vowel.tone() == t)
+            })
+        })
+        .collect::<Vec<_>>()
+}
+
 fn main() {
-    let mut writer = csv::Writer::from_writer(
-        std::fs::File::create("minimal_pairs.csv").expect("couldn't open output csv"),
-    );
+    let options = Options::from_args();
+    let mut writer = csv::Writer::from_writer(std::io::stdout());
+
+    println!("Searching for minimal pairs with options: {:?}", options);
+
+    let filtered_words = filter(&options, words());
+
+    let pairs = filtered_words
+        .into_iter()
+        .permutations(2)
+        .par_bridge()
+        .filter_map(|v| {
+            let (a, b) = (v[0], v[1]);
+            let mut deltas = match Delta::from_word_pair(a, b) {
+                DeltasOrLengthDifference::LengthDifference => return None,
+                DeltasOrLengthDifference::Deltas(deltas) => deltas,
+            };
+
+            let delta = deltas.next()?;
+            if deltas.next().is_some() {
+                // pair is not minimal
+                return None;
+            }
+
+            if delta.kind != options.kind {
+                return None;
+            }
+
+            Some(delta)
+        })
+        .collect::<Vec<_>>();
+
+    for pair in pairs {
+        writer.serialize(pair).expect("failed to write row");
+    }
 }
 
 #[cfg(test)]
@@ -140,11 +301,47 @@ mod test {
 
     #[test]
     fn build_entry() {
-        let entry = Entry::new("phức tạp : complicated");
+        let entry = Entry::new("phức tạp : complicated").unwrap();
         let syllables: Vec<Syllable> = entry.syllables().collect();
 
         assert_eq!(entry.raw, "phức tạp");
         assert_eq!(syllables[0].raw, "phức");
         assert_eq!(syllables[1].raw, "tạp");
+    }
+
+    #[test]
+    fn filter_works() {
+        let entry = Entry::new("phức tạp : complicated").unwrap();
+        let words = rayon::iter::once(entry);
+
+        assert_eq!(
+            filter(
+                &Options {
+                    vowels: vec!["e".to_owned()],
+                    ..Default::default()
+                },
+                words
+            ),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn filter_preserves() {
+        let entry = Entry::new("phức tạp : complicated").unwrap();
+        let words = rayon::iter::once(entry);
+
+        assert_eq!(
+            filter(
+                &Options {
+                    vowels: vec!["a".to_owned()],
+                    ..Default::default()
+                },
+                words
+            ),
+            vec![Entry {
+                raw: "phức tạp"
+            }]
+        );
     }
 }
