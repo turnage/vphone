@@ -14,17 +14,17 @@ vphone -v a -v e --mode vowel
 You'll get a csv like this.
 
 ```
-kind,isolated_right,isolated_left,right,left
-Vowel,a,e,gan,geneve
-Vowel,a,e,bả,bẻ
-Vowel,a,e,chan,chen
-Vowel,e,a,chét,chát
-Vowel,a,e,da,de
-Vowel,e,a,khen,khan
-Vowel,e,a,khé,khá
-Vowel,e,a,khét,khát
-Vowel,a,e,kháp,khép
-Vowel,e,a,kỳ hẹn,kỳ hạn
+right,left
+gan,geneve
+bả,bẻ
+chan,chen
+chét,chát
+da,de
+khen,khan
+khé,khá
+khét,khát
+kháp,khép
+kỳ hẹn,kỳ hạn
 ...
 ```
 
@@ -38,20 +38,20 @@ vphone -v a -v ă -t rising -f t -f ch --mode final_consonant
 and get results like:
 
 ```
-kind,isolated_right,isolated_left,right,left
-FinalConsonant,t,ch,khát,khách
-FinalConsonant,ch,t,khách,khát
-FinalConsonant,ch,t,nhách,nhát
-FinalConsonant,ch,t,rách,rát
-FinalConsonant,ch,t,bách,bát
-FinalConsonant,t,ch,lát,lách
-FinalConsonant,t,ch,nát,nách
-FinalConsonant,ch,t,sách,sát
-FinalConsonant,t,ch,trát,trách
-FinalConsonant,ch,t,trách,trát
-FinalConsonant,t,ch,xát,xách
-FinalConsonant,ch,t,ách,át
-FinalConsonant,t,ch,thát,thách
-FinalConsonant,t,ch,bát bộ,bách bộ
+right,left
+khát,khách
+khách,khát
+nhách,nhát
+rách,rát
+bách,bát
+lát,lách
+nát,nách
+sách,sát
+trát,trách
+trách,trát
+xát,xách
+ách,át
+thát,thách
+bát bộ,bách bộ
 ...
 ```

@@ -16,7 +16,7 @@ speech_config.speech_synthesis_voice_name= randomly_choose(['vi-VN-HoaiMyNeural'
 
 def synthesize_sentence(sentence: str, outdir: str) -> str:
     checksum = hashlib.sha256(sentence.encode()).hexdigest()
-    filename = f"{outdir}/{checksum}.mp3"
+    filename = f"{outdir}_{checksum}.mp3"
     # if file exists already, don't synthesize it again
     if os.path.exists(filename):
         return filename

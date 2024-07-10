@@ -288,8 +288,6 @@ fn main() {
     let options = Options::from_args();
     let mut writer = csv::Writer::from_writer(std::io::stdout());
 
-    println!("Searching for minimal pairs with options: {:?}", options);
-
     let filtered_words = filter(&options, words());
 
     let which_syllable_passed_predicate = |w: Entry<'_>| {
@@ -334,8 +332,15 @@ fn main() {
         })
         .collect::<Vec<_>>();
 
+    #[derive(serde::Serialize)]
+    struct Row<'a> {
+        right: &'a str,
+        left: &'a str,
+    }
+
+
     for pair in pairs {
-        writer.serialize(pair).expect("failed to write row");
+        writer.serialize(Row { left: pair.left, right: pair.right }).expect("failed to write row");
     }
 }
 

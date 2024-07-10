@@ -236,19 +236,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
 
 [[package]]
-name = "scripts"
-version = "0.1.0"
-dependencies = [
- "csv",
- "every_variant",
- "itertools",
- "lazy_static",
- "rayon",
- "serde",
- "structopt",
-]
-
-[[package]]
 name = "serde"
 version = "1.0.203"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -358,6 +345,19 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
+
+[[package]]
+name = "vphone"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "every_variant",
+ "itertools",
+ "lazy_static",
+ "rayon",
+ "serde",
+ "structopt",
+]
 
 [[package]]
 name = "winapi"
